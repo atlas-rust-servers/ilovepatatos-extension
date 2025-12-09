@@ -161,6 +161,30 @@ public static class BasePlayerEx
     }
 
     [MustUseReturnValue]
+    public static T CastFirstByType<T>(this BasePlayer player, out RaycastHit hit, float distance = float.PositiveInfinity, int layer = CAST_LAYER)
+        where T : BaseEntity
+    {
+        Ray origin = player.eyes.HeadRay();
+        int size = Physics.RaycastNonAlloc(origin, s_results, distance, layer);
+
+        for (int i = 0; i < size; i++)
+        {
+            hit = s_results[i];
+
+            Collider collider = hit.collider;
+            if (collider == null)
+                continue;
+
+            var entity = collider.ToBaseEntity();
+            if (entity is T value)
+                return value;
+        }
+
+        hit = default;
+        return null;
+    }
+
+    [MustUseReturnValue]
     public static BaseEntity CastEntity(this BasePlayer player, float distance = float.PositiveInfinity, int layer = CAST_LAYER)
     {
         Physics.Raycast(player.eyes.HeadRay(), out RaycastHit hit, distance, layer);
