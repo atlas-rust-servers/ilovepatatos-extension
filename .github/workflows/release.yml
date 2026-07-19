@@ -1,10 +1,11 @@
 name: Create Release
 
+# NOTE: keep this workflow's skeleton identical to the one on the `atlas-hub` branch.
+# Only the downloaded UiFramework variant and the uploaded artifact name differ between branches.
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   build:
@@ -13,11 +14,13 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4.1.0
-      with:
-        fetch-depth: 0 # Necessary to fetch all tags for version calculation
 
     - name: Setup MSBuild Path
       uses: microsoft/setup-msbuild@v2
+
+    - name: Set VERSION variable from tag
+      run: echo "VERSION=${{ github.ref_name }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+      shell: pwsh
 
     - name: Download References
       run: |
@@ -45,7 +48,7 @@ jobs:
         Move-Item Oxide\RustDedicated_Data\Managed\*.dll src\dependencies\ -Force
         
         echo "[Download References] Downloading Oxide.Ext.UiFramework.dll"
-        Invoke-WebRequest -Uri "https://github.com/dassjosh/Rust.UIFramework/releases/latest/download/Oxide.Ext.UiFramework.dll" -OutFile "Oxide.Ext.UiFramework.dll"
+        Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/Oxide.Ext.UiFramework.dll" -OutFile "Oxide.Ext.UiFramework.dll"
         Move-Item -Path "Oxide.Ext.UiFramework.dll" -Destination "src\dependencies\" -Force
         
         echo "[Download References] Downloading Oxide.Ext.ConsoleExt.dll"
@@ -60,29 +63,20 @@ jobs:
       run: msbuild -t:restore src/IlovepatatosExt/IlovepatatosExt.csproj
 
     - name: Build DLL
-      run: msbuild src/IlovepatatosExt/IlovepatatosExt.csproj /p:Configuration=Release /p:Platform="Any CPU"
-
-    - name: Automated Versioning
-      if: github.ref == 'refs/heads/main'
-      run: |
-        git fetch --tags
-        $latestTag = git tag -l --sort=-v:refname | Select-Object -First 1
-        if (-not $latestTag) {
-          $latestTag = "v1.0.0"
-        }
-        $versionNumbers = $latestTag.TrimStart('v').Split('.')
-        $newPatch = [int]$versionNumbers[2] + 1
-        $newTag = "v{0}.{1}.{2}" -f $versionNumbers[0], $versionNumbers[1], $newPatch
-        git tag $newTag
-        git push origin $newTag
-        echo "New Tag: $newTag"
-        echo "NEW_TAG=$newTag" | Out-File -FilePath $env:GITHUB_ENV -Append
-      shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: msbuild src/IlovepatatosExt/IlovepatatosExt.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:Version=${{ env.VERSION }}
 
     - name: Upload Release Assets
       run: |
-        gh release create ${{ env.NEW_TAG }} "src\IlovepatatosExt\bin\Any CPU\Release\net48\Oxide.Ext.IlovepatatosExt.dll" --title "Release ${{ env.NEW_TAG }}"
+        $TAG = "${{ github.ref_name }}"
+        $repo = "${{ github.repository }}"
+        $dll = "src\IlovepatatosExt\bin\Any CPU\Release\net48\Oxide.Ext.IlovepatatosExt.dll"
+
+        gh release view $TAG -R $repo *> $null
+        if ($LASTEXITCODE -ne 0) {
+          gh release create $TAG -R $repo --title "Release $TAG"
+        }
+
+        gh release upload $TAG $dll -R $repo --clobber
+      shell: pwsh
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
