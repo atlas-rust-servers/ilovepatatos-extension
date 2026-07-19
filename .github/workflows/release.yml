@@ -1,8 +1,5 @@
 name: Create Release
 
-# NOTE: keep this workflow's skeleton identical to the one on the `main` branch.
-# Only the downloaded UiFramework variant and the uploaded artifact name differ between branches.
-# This is the `atlas-hub` branch: it consumes the atlas-hub UiFramework build and ships the atlas-hub_ prefixed dll.
 on:
   push:
     tags:
@@ -13,73 +10,91 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4.1.0
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
 
-    - name: Setup MSBuild Path
-      uses: microsoft/setup-msbuild@v2
+      - name: Checkout atlas-hub
+        uses: actions/checkout@v4
+        with:
+          ref: atlas-hub
+          path: atlas-hub
 
-    - name: Set VERSION variable from tag
-      run: echo "VERSION=${{ github.ref_name }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-      shell: pwsh
+      - name: Setup MSBuild Path
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Download References
-      run: |
-        echo "[Download References] Downloading dependencies"
-        mkdir DepotDownloader
-        cd DepotDownloader
-        Invoke-WebRequest -Uri "https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-windows-x64.zip" -OutFile "DepotDownloader-windows-x64.zip"
-        Expand-Archive -Path "DepotDownloader-windows-x64.zip" -DestinationPath "."
-        echo 'regex:RustDedicated_Data/Managed/.*\.dll' > filelist.txt
-        
-        echo "[Download References] Downloading Rust dlls"
-        .\DepotDownloader -app 258550 -depot 258552 -filelist filelist.txt -dir "$(pwd)"
-        cd ..
-        mkdir src\dependencies
-        echo "[Download References] Moving Rust dlls"
-        Move-Item DepotDownloader\RustDedicated_Data\Managed\*.dll src\dependencies\ -Force
-        
-        mkdir Oxide
-        cd Oxide
-        echo "[Download References] Downloading Oxide"
-        Invoke-WebRequest -Uri "https://github.com/OxideMod/Oxide.Rust/releases/latest/download/Oxide.Rust.zip" -OutFile "Oxide.Rust.zip"
-        Expand-Archive -Path "Oxide.Rust.zip" -DestinationPath "."
-        cd ..
-        echo "[Download References] Moving Oxide dlls"
-        Move-Item Oxide\RustDedicated_Data\Managed\*.dll src\dependencies\ -Force
-        
-        echo "[Download References] Downloading atlas-hub_Oxide.Ext.UiFramework.dll (renamed to strip the atlas-hub_ prefix)"
-        Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/atlas-hub_Oxide.Ext.UiFramework.dll" -OutFile "Oxide.Ext.UiFramework.dll"
-        Move-Item -Path "Oxide.Ext.UiFramework.dll" -Destination "src\dependencies\" -Force
-        
-        echo "[Download References] Downloading Oxide.Ext.ConsoleExt.dll"
-        Invoke-WebRequest -Uri "https://github.com/ilovepatatos-rust/console-extension/releases/latest/download/Oxide.Ext.ConsoleExt.dll" -OutFile "Oxide.Ext.ConsoleExt.dll"
-        Move-Item -Path "Oxide.Ext.ConsoleExt.dll" -Destination "src\dependencies\" -Force
-        
-        echo "[Download References] Downloading Oxide.Ext.GizmosExt.dll"
-        Invoke-WebRequest -Uri "https://github.com/ilovepatatos-rust/gizmos-extension/releases/latest/download/Oxide.Ext.GizmosExt.dll" -OutFile "Oxide.Ext.GizmosExt.dll"
-        Move-Item -Path "Oxide.Ext.GizmosExt.dll" -Destination "src\dependencies\" -Force
+      - name: Set VERSION variable from tag
+        run: echo "VERSION=${{ github.ref_name }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
 
-    - name: Restore NuGet packages
-      run: msbuild -t:restore src/IlovepatatosExt/IlovepatatosExt.csproj
+      - name: Download References
+        shell: pwsh
+        run: |
+          echo "[Download References] Downloading DepotDownloader"
+          mkdir DepotDownloader
+          Invoke-WebRequest -Uri "https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-windows-x64.zip" -OutFile "DepotDownloader\DepotDownloader.zip"
+          Expand-Archive -Path "DepotDownloader\DepotDownloader.zip" -DestinationPath "DepotDownloader"
+          echo 'regex:RustDedicated_Data/Managed/.*\.dll' > DepotDownloader\filelist.txt
 
-    - name: Build DLL
-      run: msbuild src/IlovepatatosExt/IlovepatatosExt.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:Version=${{ env.VERSION }}
+          echo "[Download References] Downloading Rust dlls"
+          .\DepotDownloader\DepotDownloader.exe -app 258550 -depot 258552 -filelist DepotDownloader\filelist.txt -dir DepotDownloader
 
-    - name: Upload Release Assets
-      run: |
-        $TAG = "${{ github.ref_name }}"
-        $repo = "${{ github.repository }}"
-        $built = "src\IlovepatatosExt\bin\Any CPU\Release\net48\Oxide.Ext.IlovepatatosExt.dll"
-        $dll = "src\IlovepatatosExt\bin\Any CPU\Release\net48\atlas-hub_Oxide.Ext.IlovepatatosExt.dll"
-        Copy-Item $built $dll -Force
+          mkdir deps
+          echo "[Download References] Collecting Rust dlls"
+          Move-Item DepotDownloader\RustDedicated_Data\Managed\*.dll deps\ -Force
 
-        gh release view $TAG -R $repo *> $null
-        if ($LASTEXITCODE -ne 0) {
-          gh release create $TAG -R $repo --title "Release $TAG"
-        }
+          echo "[Download References] Downloading Oxide"
+          mkdir Oxide
+          Invoke-WebRequest -Uri "https://github.com/OxideMod/Oxide.Rust/releases/latest/download/Oxide.Rust.zip" -OutFile "Oxide\Oxide.Rust.zip"
+          Expand-Archive -Path "Oxide\Oxide.Rust.zip" -DestinationPath "Oxide"
+          echo "[Download References] Collecting Oxide dlls"
+          Move-Item Oxide\RustDedicated_Data\Managed\*.dll deps\ -Force
 
-        gh release upload $TAG $dll -R $repo --clobber
-      shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "[Download References] Downloading Oxide.Ext.ConsoleExt.dll"
+          Invoke-WebRequest -Uri "https://github.com/ilovepatatos-rust/console-extension/releases/latest/download/Oxide.Ext.ConsoleExt.dll" -OutFile "deps\Oxide.Ext.ConsoleExt.dll"
+
+          echo "[Download References] Downloading Oxide.Ext.GizmosExt.dll"
+          Invoke-WebRequest -Uri "https://github.com/ilovepatatos-rust/gizmos-extension/releases/latest/download/Oxide.Ext.GizmosExt.dll" -OutFile "deps\Oxide.Ext.GizmosExt.dll"
+
+          echo "[Download References] Distributing shared references to both checkouts"
+          New-Item -ItemType Directory -Force -Path "main\src\dependencies", "atlas-hub\src\dependencies" | Out-Null
+          Copy-Item deps\* "main\src\dependencies\" -Force
+          Copy-Item deps\* "atlas-hub\src\dependencies\" -Force
+
+          echo "[Download References] Downloading UiFramework (main -> Oxide.Ext.UiFramework.dll)"
+          Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/Oxide.Ext.UiFramework.dll" -OutFile "main\src\dependencies\Oxide.Ext.UiFramework.dll"
+
+          echo "[Download References] Downloading UiFramework (atlas-hub -> stripped prefix to Oxide.Ext.UiFramework.dll)"
+          Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/atlas-hub_Oxide.Ext.UiFramework.dll" -OutFile "atlas-hub\src\dependencies\Oxide.Ext.UiFramework.dll"
+
+      - name: Build DLL - main
+        run: |
+          msbuild -t:restore main/src/IlovepatatosExt/IlovepatatosExt.csproj
+          msbuild main/src/IlovepatatosExt/IlovepatatosExt.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:Version=${{ env.VERSION }}
+
+      - name: Build DLL - atlas-hub
+        run: |
+          msbuild -t:restore atlas-hub/src/IlovepatatosExt/IlovepatatosExt.csproj
+          msbuild atlas-hub/src/IlovepatatosExt/IlovepatatosExt.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:Version=${{ env.VERSION }}
+
+      - name: Move DLLs
+        shell: pwsh
+        run: |
+          mkdir bin
+          Move-Item "main/src/IlovepatatosExt/bin/Any CPU/Release/net48/Oxide.Ext.IlovepatatosExt.dll" "bin/Oxide.Ext.IlovepatatosExt.dll" -Force
+          Move-Item "atlas-hub/src/IlovepatatosExt/bin/Any CPU/Release/net48/Oxide.Ext.IlovepatatosExt.dll" "bin/atlas-hub_Oxide.Ext.IlovepatatosExt.dll" -Force
+
+      - name: Upload Release Assets
+        shell: pwsh
+        run: |
+          $TAG = "${{ github.ref_name }}"
+          $dllPath = Get-ChildItem -Path bin -Filter *.dll -File | Select-Object -ExpandProperty FullName
+          gh release view $TAG -R ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $TAG --title $TAG --notes "Automated build" -R ${{ github.repository }}
+          }
+          gh release upload $TAG $dllPath -R ${{ github.repository }} --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
