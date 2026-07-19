@@ -1,7 +1,8 @@
 name: Create Release
 
-# NOTE: keep this workflow's skeleton identical to the one on the `atlas-hub` branch.
+# NOTE: keep this workflow's skeleton identical to the one on the `main` branch.
 # Only the downloaded UiFramework variant and the uploaded artifact name differ between branches.
+# This is the `atlas-hub` branch: it consumes the atlas-hub UiFramework build and ships the atlas-hub_ prefixed dll.
 on:
   push:
     tags:
@@ -47,8 +48,8 @@ jobs:
         echo "[Download References] Moving Oxide dlls"
         Move-Item Oxide\RustDedicated_Data\Managed\*.dll src\dependencies\ -Force
         
-        echo "[Download References] Downloading Oxide.Ext.UiFramework.dll"
-        Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/Oxide.Ext.UiFramework.dll" -OutFile "Oxide.Ext.UiFramework.dll"
+        echo "[Download References] Downloading atlas-hub_Oxide.Ext.UiFramework.dll (renamed to strip the atlas-hub_ prefix)"
+        Invoke-WebRequest -Uri "https://github.com/atlas-rust-servers/ui-framework/releases/latest/download/atlas-hub_Oxide.Ext.UiFramework.dll" -OutFile "Oxide.Ext.UiFramework.dll"
         Move-Item -Path "Oxide.Ext.UiFramework.dll" -Destination "src\dependencies\" -Force
         
         echo "[Download References] Downloading Oxide.Ext.ConsoleExt.dll"
@@ -69,7 +70,9 @@ jobs:
       run: |
         $TAG = "${{ github.ref_name }}"
         $repo = "${{ github.repository }}"
-        $dll = "src\IlovepatatosExt\bin\Any CPU\Release\net48\Oxide.Ext.IlovepatatosExt.dll"
+        $built = "src\IlovepatatosExt\bin\Any CPU\Release\net48\Oxide.Ext.IlovepatatosExt.dll"
+        $dll = "src\IlovepatatosExt\bin\Any CPU\Release\net48\atlas-hub_Oxide.Ext.IlovepatatosExt.dll"
+        Copy-Item $built $dll -Force
 
         gh release view $TAG -R $repo *> $null
         if ($LASTEXITCODE -ne 0) {
