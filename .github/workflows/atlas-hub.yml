@@ -3,6 +3,8 @@ name: atlas-hub Rolling Build
 on:
   push:
     branches: [ "atlas-hub" ]
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 env:
@@ -10,7 +12,48 @@ env:
   ASSET_NAME: atlas-hub_Oxide.Ext.IlovepatatosExt.dll
 
 jobs:
+  # A push to ui-framework cannot start a workflow here, so the schedule polls its
+  # rolling asset instead: the fingerprint of the last build is kept in the release
+  # notes and only a change starts the Windows job.
+  check:
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      changed: ${{ steps.fingerprint.outputs.changed }}
+      fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
+
+    steps:
+      - name: Compare fingerprint
+        id: fingerprint
+        shell: bash
+        run: |
+          self=$(gh api "repos/$GITHUB_REPOSITORY/commits/atlas-hub" --jq '.sha')
+          ui=$(gh api "repos/atlas-rust-servers/ui-framework/releases/tags/$HUB_TAG" --jq '.assets[] | select(.name=="atlas-hub_Oxide.Ext.UiFramework.dll") | .id' 2>/dev/null)
+          fingerprint="self=$self ui=$ui"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+          echo "current: $fingerprint"
+
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous=$(gh release view "$HUB_TAG" -R "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null | grep -o 'fingerprint: .*' | sed 's/^fingerprint: //')
+          echo "previous: $previous"
+
+          if [ "$previous" = "$fingerprint" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+
+    needs: check
+    if: needs.check.outputs.changed == 'true'
 
     runs-on: windows-latest
 
@@ -61,6 +104,7 @@ jobs:
             gh release create $env:HUB_TAG --title "atlas-hub rolling build" --notes "bootstrap" --prerelease --target atlas-hub -R $env:GITHUB_REPOSITORY
           }
           gh release upload $env:HUB_TAG "bin/$env:ASSET_NAME" -R $env:GITHUB_REPOSITORY --clobber
-          gh release edit $env:HUB_TAG --notes "Rolling build of the atlas-hub branch. Version $env:VERSION, commit $env:GITHUB_SHA, run #$env:GITHUB_RUN_NUMBER." -R $env:GITHUB_REPOSITORY
+          $notes = "Rolling build of the atlas-hub branch. Version $env:VERSION, commit $env:GITHUB_SHA, run #$env:GITHUB_RUN_NUMBER.`n`nfingerprint: ${{ needs.check.outputs.fingerprint }}"
+          gh release edit $env:HUB_TAG --notes $notes -R $env:GITHUB_REPOSITORY
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
