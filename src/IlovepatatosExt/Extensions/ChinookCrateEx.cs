@@ -26,7 +26,8 @@ public static class ChinookCrateEx
         Interface.CallHook("_OnCrateHack", crate);
 
         crate.BroadcastEntityMessage("HackingStarted", layerMask: 256);
-        crate.SetFlag(BaseEntity.Flags.Reserved1, true);
+        crate.SetFlagLocal(BaseEntity.Flags.Reserved1, true);
+        crate.SendNetworkUpdate();
 
         crate.CancelInvoke(crate.HackProgress);
         crate.CancelInvoke(crate.UpdateChinookCrateCountdown);
@@ -58,7 +59,8 @@ public static class ChinookCrateEx
             Interface.CallHook("_OnCrateHackEnd", crate);
 
             crate.RefreshDecay();
-            crate.SetFlag(BaseEntity.Flags.Reserved2, true);
+            crate.SetFlagLocal(BaseEntity.Flags.Reserved2, true);
+            crate.SendNetworkUpdate();
 
             crate.isLootable = true;
 
