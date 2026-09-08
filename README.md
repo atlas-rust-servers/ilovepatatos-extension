@@ -12,12 +12,10 @@ Ilovepatatos framework for [Rust](https://store.steampowered.com/app/252490/Rust
 
 ## atlas-hub releases
 
-`atlas-hub.dependencies.json` pins the UiFramework build manifest and the ConsoleExt/GizmosExt release assets by tag and SHA256. `Download-AtlasHubDependencies.ps1` requires an empty dependencies directory, verifies each download, and uses the Rust/Oxide reference snapshot from the selected UiFramework release.
+Push to `atlas-hub` or run its workflow manually to build and publish `atlas-hub-X.Y.Z`. The version increments automatically. These prereleases do not replace stable latest.
 
-Push a new `atlas-hub-X.Y.Z` tag on the atlas-hub branch to build that commit and publish a versioned prerelease. The workflow verifies the compiled UiFramework assembly reference before publishing. It preserves the stable latest release and does not overwrite existing releases.
+Each build downloads current Linux Rust/Oxide references. `atlas-hub.dependencies.json` selects each DLL independently: UiFramework from its latest published `atlas-hub` build, ConsoleExt and GizmosExt from stable latest. No dependency tags, hash pins or reference archives are required. Updating a dependency alone does not trigger a rebuild.
 
-Each prerelease contains the DLL, `atlas-hub.build.json` with source and dependency identities, and `atlas-hub.references.zip` with the exact input DLLs for downstream builds. The reference archive is a build input; do not extract it over a running server. Install the extension under its normal name, `Oxide.Ext.IlovepatatosExt.dll`, with the dependency versions recorded in the manifest.
+Each prerelease contains the extension DLL and `atlas-hub.build.json`, which identifies the source branch and selected downloads. Install the DLL under its normal name, `Oxide.Ext.IlovepatatosExt.dll`, and list every required DLL separately in egg's `external.json`.
 
-Downstream repositories can use `.github/actions/build-extension` from this repository, pinned to a commit. Their `atlas-hub.dependencies.json` selects a parent release through `parent.repository`, `parent.branch`, `parent.tag`, `parent.commit` and `parent.manifestSha256`. `sourceBranch` records the consumer's actual source branch; it can be `main` even when the dependency profile is `atlas-hub`. The action verifies and inherits the parent's complete dependency set, adds the parent DLL, builds the consumer and checks its assembly references before publication. Each consumer still needs its own release trigger; there is no automatic cross-repository rebuild trigger.
-
-The optional `prepare-references` action input names a PowerShell script inside the source checkout. It runs after downloading the pinned inputs and before compilation. For consumers that require publicized game references, use the repository's existing publicizer in that step. The action still verifies every extension DLL hash after preparation; the output reference archive records the actual compiler inputs.
+Downstream repositories can reuse `.github/actions/build-extension@atlas-hub` with their own dependency profile. The optional `prepare-references` script runs on the game references before extension DLLs are downloaded and compiled.
