@@ -10,6 +10,9 @@ inputs:
   platform:
     description: MSBuild platform.
     default: Any CPU
+  prepare-references:
+    description: Optional source checkout PowerShell script to prepare compiler references.
+    default: ''
 runs:
   using: composite
   steps:
@@ -24,6 +27,7 @@ runs:
         PROJECT: ${{ inputs.project }}
         ASSEMBLY: ${{ inputs.assembly }}
         PLATFORM: ${{ inputs.platform }}
+        PREPARE_REFERENCES: ${{ inputs.prepare-references }}
       run: |
         $version = '0.0.0'
         if ($env:GITHUB_REF_TYPE -eq 'tag')
@@ -34,7 +38,7 @@ runs:
             }
             $version = $Matches[1]
         }
-        & "$env:BUILDER_PATH/Build-Extension.ps1" -Project $env:PROJECT -Assembly $env:ASSEMBLY -Platform $env:PLATFORM -Version $version
+        & "$env:BUILDER_PATH/Build-Extension.ps1" -Project $env:PROJECT -Assembly $env:ASSEMBLY -Platform $env:PLATFORM -Version $version -PrepareReferences $env:PREPARE_REFERENCES
 
     - uses: actions/upload-artifact@v4
       with:

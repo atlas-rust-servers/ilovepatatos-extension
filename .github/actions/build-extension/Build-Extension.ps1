@@ -5,7 +5,8 @@ param(
     [string]$Assembly,
     [Parameter(Mandatory)]
     [string]$Version,
-    [string]$Platform = 'Any CPU'
+    [string]$Platform = 'Any CPU',
+    [string]$PrepareReferences = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,6 +58,15 @@ foreach ($extension in $profile.extensions)
 }
 
 $expectedAssemblies = @{}
+if ($PrepareReferences)
+{
+    $preparationPath = (Resolve-Path -LiteralPath $PrepareReferences).Path
+    if (-not $preparationPath.StartsWith($sourceDirectory + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetExtension($preparationPath) -ne '.ps1')
+    {
+        throw 'Reference preparation must be a PowerShell script inside the source checkout.'
+    }
+    & $preparationPath
+}
 foreach ($dependency in $dependencies)
 {
     if ($dependency.file -notmatch '^Oxide\.Ext\.[a-zA-Z0-9_.-]+\.dll$')
@@ -150,6 +160,7 @@ $manifest = [ordered]@{
     dependencies = $dependencies
     references = [ordered]@{
         platform = $parent.references.platform
+        preparation = $PrepareReferences
         file = 'atlas-hub.references.zip'
         sha256 = (Get-FileHash bin/atlas-hub.references.zip -Algorithm SHA256).Hash.ToLowerInvariant()
         assemblies = $references
