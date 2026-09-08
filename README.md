@@ -9,3 +9,11 @@ Ilovepatatos framework for [Rust](https://store.steampowered.com/app/252490/Rust
 1. Grab the Oxide.Ext.IlovepatatosExt.dll from latest release
 2. Put the DLL into `RustDedicated_Data\Managed` folder
 3. Restart the server
+
+## atlas-hub releases
+
+`atlas-hub.dependencies.json` pins the UiFramework build manifest and the ConsoleExt/GizmosExt release assets by tag and SHA256. `Download-AtlasHubDependencies.ps1` requires an empty dependencies directory, verifies each download, and uses the Rust/Oxide reference snapshot from the selected UiFramework release.
+
+Push a new `atlas-hub-X.Y.Z` tag on the atlas-hub branch to build that commit and publish a versioned prerelease. The workflow verifies the compiled UiFramework assembly reference before publishing. It preserves the stable latest release and does not overwrite existing releases.
+
+Each prerelease contains the DLL, `atlas-hub.build.json` with source and dependency identities, and `atlas-hub.references.zip` with the exact input DLLs for downstream builds. The reference archive is a build input; do not extract it over a running server. Install the extension under its normal name, `Oxide.Ext.IlovepatatosExt.dll`, with the dependency versions recorded in the manifest.

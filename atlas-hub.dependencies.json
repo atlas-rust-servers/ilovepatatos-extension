@@ -1,0 +1,22 @@
+{
+  "uiFramework": {
+    "repository": "atlas-rust-servers/ui-framework",
+    "tag": "atlas-hub-1.7.22",
+    "commit": "a6b69581ce8c53646d8364bf6639438a01b7484a",
+    "manifestSha256": "4f8bed4a6c9f2250bdb40f3879e1eaea0c6b2e45a1d6dc6b70b9e311cd9fc63f"
+  },
+  "extensions": [
+    {
+      "repository": "ilovepatatos-rust/console-extension",
+      "tag": "v17",
+      "file": "Oxide.Ext.ConsoleExt.dll",
+      "sha256": "5c97819d6333fa1e8bc4012478470067e0ee01591ee6ccd3fa5db4515c411a53"
+    },
+    {
+      "repository": "ilovepatatos-rust/gizmos-extension",
+      "tag": "v9",
+      "file": "Oxide.Ext.GizmosExt.dll",
+      "sha256": "cfc28ff32eed7f3a138a3261be06c370942aa65c5ace08b7ff6626efeb90db78"
+    }
+  ]
+}

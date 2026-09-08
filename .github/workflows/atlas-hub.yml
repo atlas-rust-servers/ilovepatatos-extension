@@ -1,0 +1,174 @@
+name: atlas-hub Release
+
+on:
+  push:
+    tags:
+      - "atlas-hub-[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    branches: [ "atlas-hub" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        run: |
+          $version = '0.0.0'
+          if ($env:GITHUB_REF_TYPE -eq 'tag')
+          {
+              if ($env:GITHUB_REF_NAME -notmatch '^atlas-hub-([0-9]+\.[0-9]+\.[0-9]+)$')
+              {
+                  throw "Invalid atlas-hub release tag: $env:GITHUB_REF_NAME"
+              }
+              $version = $Matches[1]
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Download pinned dependencies
+        run: ./Download-AtlasHubDependencies.ps1
+
+      - name: Build DLL
+        run: dotnet build src/IlovepatatosExt/IlovepatatosExt.csproj -c Release '/p:Platform=Any CPU' /p:Version=$env:VERSION
+
+      - name: Verify compiled UiFramework reference
+        run: |
+          $profile = Get-Content atlas-hub.dependencies.json -Raw | ConvertFrom-Json
+          $framework = Get-Content src/dependencies/.downloads/atlas-hub.build.json -Raw | ConvertFrom-Json
+          $path = 'src/IlovepatatosExt/bin/Any CPU/Release/net48/Oxide.Ext.IlovepatatosExt.dll'
+          $identity = [Reflection.AssemblyName]::GetAssemblyName((Resolve-Path $path))
+          if ($identity.Name -ne 'Oxide.Ext.IlovepatatosExt' -or $identity.Version.ToString() -ne "$env:VERSION.0")
+          {
+              throw "Unexpected assembly identity: $($identity.FullName)"
+          }
+          $stream = [IO.File]::OpenRead((Resolve-Path $path))
+          $reader = [Reflection.PortableExecutable.PEReader]::new($stream)
+          try
+          {
+              $metadata = [Reflection.Metadata.PEReaderExtensions]::GetMetadataReader($reader)
+              $found = $false
+              foreach ($handle in $metadata.AssemblyReferences)
+              {
+                  $reference = $metadata.GetAssemblyReference($handle)
+                  if ($metadata.GetString($reference.Name) -eq 'Oxide.Ext.UiFramework')
+                  {
+                      if ($reference.Version.ToString() -ne "$($framework.version).0")
+                      {
+                          throw "Wrong UiFramework reference: $($reference.Version)"
+                      }
+                      $found = $true
+                  }
+              }
+              if (-not $found)
+              {
+                  throw 'Compiled DLL has no UiFramework assembly reference.'
+              }
+          }
+          finally
+          {
+              $reader.Dispose()
+              $stream.Dispose()
+          }
+          Write-Output "Verified UiFramework reference from $($profile.uiFramework.tag)."
+
+      - name: Package DLL and dependencies
+        run: |
+          New-Item -ItemType Directory -Path bin -Force | Out-Null
+          $assetName = 'atlas-hub_Oxide.Ext.IlovepatatosExt.dll'
+          Copy-Item 'src/IlovepatatosExt/bin/Any CPU/Release/net48/Oxide.Ext.IlovepatatosExt.dll' "bin/$assetName"
+          $profile = Get-Content atlas-hub.dependencies.json -Raw | ConvertFrom-Json
+          $framework = Get-Content src/dependencies/.downloads/atlas-hub.build.json -Raw | ConvertFrom-Json
+          $dependencies = @([ordered]@{
+              repository = $framework.repository
+              branch = $framework.branch
+              tag = $framework.tag
+              commit = $framework.commit
+              manifestSha256 = $profile.uiFramework.manifestSha256
+              file = 'Oxide.Ext.UiFramework.dll'
+              asset = $framework.asset.file
+              sha256 = $framework.asset.sha256
+          })
+          foreach ($extension in $profile.extensions)
+          {
+              $dependencies += [ordered]@{
+                  repository = $extension.repository
+                  tag = $extension.tag
+                  file = $extension.file
+                  asset = $extension.file
+                  sha256 = $extension.sha256
+              }
+          }
+          $references = @(foreach ($file in Get-ChildItem src/dependencies -Filter '*.dll' -File | Sort-Object Name)
+          {
+              [ordered]@{
+                  file = $file.Name
+                  sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+          })
+          Compress-Archive -Path 'src/dependencies/*.dll' -DestinationPath 'bin/atlas-hub.references.zip'
+          $manifest = [ordered]@{
+              schema = 1
+              repository = $env:GITHUB_REPOSITORY
+              branch = 'atlas-hub'
+              commit = (git rev-parse HEAD)
+              tag = $env:GITHUB_REF_NAME
+              version = $env:VERSION
+              sdk = (dotnet --version)
+              targetFramework = 'net48'
+              asset = [ordered]@{
+                  file = $assetName
+                  sha256 = (Get-FileHash "bin/$assetName" -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+              dependencies = $dependencies
+              references = [ordered]@{
+                  file = 'atlas-hub.references.zip'
+                  sha256 = (Get-FileHash 'bin/atlas-hub.references.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+                  assemblies = $references
+              }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content bin/atlas-hub.build.json -Encoding utf8
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-hub-build
+          path: bin/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-hub-build
+          path: bin
+
+      - name: Publish versioned prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" bin/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --prerelease --latest=false \
+            --title "$GITHUB_REF_NAME" \
+            --notes "IlovepatatosExt atlas-hub build from commit $GITHUB_SHA. Pinned dependency metadata and the reference snapshot are attached."
