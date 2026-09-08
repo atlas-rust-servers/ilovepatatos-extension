@@ -48,13 +48,7 @@ $dependencies += [ordered]@{
 }
 foreach ($extension in $profile.extensions)
 {
-    $dependencies += [ordered]@{
-        repository = $extension.repository
-        tag = $extension.tag
-        file = $extension.file
-        asset = $extension.file
-        sha256 = $extension.sha256
-    }
+    $dependencies += $extension
 }
 
 $expectedAssemblies = @{}
@@ -149,7 +143,7 @@ $manifest = [ordered]@{
     branch = $profile.sourceBranch
     profile = 'atlas-hub'
     commit = $commit
-    tag = $env:GITHUB_REF_NAME
+    tag = if ($env:BUILD_TAG) { $env:BUILD_TAG } else { $env:GITHUB_REF_NAME }
     version = $Version
     sdk = (dotnet --version)
     targetFramework = 'net48'
@@ -158,6 +152,7 @@ $manifest = [ordered]@{
         sha256 = (Get-FileHash "bin/$assetName" -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     dependencies = $dependencies
+    buildInputs = if ($env:BUILD_INPUTS) { $env:BUILD_INPUTS | ConvertFrom-Json } else { $null }
     references = [ordered]@{
         platform = $parent.references.platform
         preparation = $PrepareReferences

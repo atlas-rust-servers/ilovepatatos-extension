@@ -30,7 +30,11 @@ runs:
         PREPARE_REFERENCES: ${{ inputs.prepare-references }}
       run: |
         $version = '0.0.0'
-        if ($env:GITHUB_REF_TYPE -eq 'tag')
+        if ($env:VERSION)
+        {
+            $version = $env:VERSION
+        }
+        elseif ($env:GITHUB_REF_TYPE -eq 'tag')
         {
             if ($env:GITHUB_REF_NAME -notmatch '^atlas-hub-([0-9]+\.[0-9]+\.[0-9]+)$')
             {
@@ -47,14 +51,21 @@ runs:
         if-no-files-found: error
 
     - name: Publish versioned prerelease
-      if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_type == 'tag'
+      if: env.BUILD_TAG != '' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_type == 'tag')
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
         $assets = @(Get-ChildItem bin -File | Select-Object -ExpandProperty FullName)
-        gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --prerelease --latest=false --title $env:GITHUB_REF_NAME --notes "Atlas extension build from commit $env:GITHUB_SHA. The manifest records the dependency chain and exact reference hashes."
+        $tag = if ($env:BUILD_TAG) { $env:BUILD_TAG } else { $env:GITHUB_REF_NAME }
+        $commit = git rev-parse HEAD
+        gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $commit --draft --prerelease --latest=false --title $tag --notes "Atlas extension build from commit $commit. The manifest records the dependency chain and exact reference hashes."
         if ($LASTEXITCODE -ne 0)
         {
             throw 'Prerelease publication failed.'
+        }
+        gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease --latest=false
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw 'Prerelease activation failed.'
         }

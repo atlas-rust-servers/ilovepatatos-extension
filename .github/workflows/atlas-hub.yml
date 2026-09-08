@@ -2,45 +2,75 @@ name: atlas-hub Release
 
 on:
   push:
-    tags:
-      - "atlas-hub-[0-9]+.[0-9]+.[0-9]+"
-  pull_request:
-    branches: [ "atlas-hub" ]
+    branches: [atlas-hub]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even when source and dependencies are unchanged
+        type: boolean
+        default: false
+  schedule:
+    - cron: '7,22,37,52 * * * *'
 
 permissions:
   contents: read
 
+concurrency:
+  group: atlas-hub-release
+  cancel-in-progress: false
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      needed: ${{ steps.inputs.outputs.needed }}
+      commit: ${{ steps.inputs.outputs.commit }}
+      version: ${{ steps.inputs.outputs.version }}
+      tag: ${{ steps.inputs.outputs.tag }}
+      inputs: ${{ steps.inputs.outputs.inputs }}
+      profile: ${{ steps.inputs.outputs.profile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: atlas-hub
+      - name: Check for source and dependency changes
+        id: inputs
+        uses: ./.github/actions/branch-inputs
+        with:
+          profile: 'atlas-hub.dependencies.json'
+          force: ${{ inputs.force || false }}
+
   build:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
     runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      BUILD_TAG: ${{ needs.check.outputs.tag }}
+      BUILD_INPUTS: ${{ needs.check.outputs.inputs }}
+      RESOLVED_PROFILE: ${{ needs.check.outputs.profile }}
     defaults:
       run:
         shell: pwsh
-
     steps:
       - name: Checkout source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.commit }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Resolve version
-        run: |
-          $version = '0.0.0'
-          if ($env:GITHUB_REF_TYPE -eq 'tag')
-          {
-              if ($env:GITHUB_REF_NAME -notmatch '^atlas-hub-([0-9]+\.[0-9]+\.[0-9]+)$')
-              {
-                  throw "Invalid atlas-hub release tag: $env:GITHUB_REF_NAME"
-              }
-              $version = $Matches[1]
-          }
-          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Download pinned dependencies
-        run: ./Download-AtlasHubDependencies.ps1
+        run: |
+          [IO.File]::WriteAllText((Join-Path $PWD 'atlas-hub.dependencies.json'), $env:RESOLVED_PROFILE, [Text.UTF8Encoding]::new($false))
+          ./Download-AtlasHubDependencies.ps1
 
       - name: Build DLL
         run: dotnet build src/IlovepatatosExt/IlovepatatosExt.csproj -c Release '/p:Platform=Any CPU' /p:Version=$env:VERSION
@@ -129,7 +159,7 @@ jobs:
               repository = $env:GITHUB_REPOSITORY
               branch = 'atlas-hub'
               commit = (git rev-parse HEAD)
-              tag = $env:GITHUB_REF_NAME
+              tag = $env:BUILD_TAG
               version = $env:VERSION
               sdk = (dotnet --version)
               targetFramework = 'net48'
@@ -138,6 +168,7 @@ jobs:
                   sha256 = (Get-FileHash "bin/$assetName" -Algorithm SHA256).Hash.ToLowerInvariant()
               }
               dependencies = $dependencies
+              buildInputs = $env:BUILD_INPUTS | ConvertFrom-Json
               references = [ordered]@{
                   platform = $framework.references.platform
                   file = 'atlas-hub.references.zip'
@@ -155,25 +186,20 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Download build
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: atlas-hub-build
           path: bin
-
-      - name: Publish versioned prerelease
+      - name: Publish complete prerelease
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ needs.check.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.check.outputs.commit }}
         run: |
-          gh release create "$GITHUB_REF_NAME" bin/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --prerelease --latest=false \
-            --title "$GITHUB_REF_NAME" \
-            --notes "IlovepatatosExt atlas-hub build from commit $GITHUB_SHA. Pinned dependency metadata and the reference snapshot are attached."
+          gh release create "$BUILD_TAG" bin/* --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" --draft --prerelease --latest=false --title "$BUILD_TAG" --notes "Automatic atlas-hub build from $SOURCE_COMMIT. Exact dependencies and Rust/Oxide inputs are attached."
+          gh release edit "$BUILD_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false

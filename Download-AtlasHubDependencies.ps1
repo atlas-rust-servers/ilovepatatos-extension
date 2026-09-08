@@ -123,6 +123,7 @@ foreach ($extension in $profile.extensions)
     {
         throw "Duplicate dependency: $($extension.file)"
     }
-    Get-ReleaseAsset -Repository $extension.repository -Tag $extension.tag -File $extension.file -Sha256 $extension.sha256 -Destination $destination
+    $asset = if ($extension.PSObject.Properties.Name -contains 'asset') { $extension.asset } else { $extension.file }
+    Get-ReleaseAsset -Repository $extension.repository -Tag $extension.tag -File $asset -Sha256 $extension.sha256 -Destination $destination
 }
 Write-Output "Verified $($manifest.references.assemblies.Count) shared references, $($framework.repository)@$($framework.tag) and $($profile.extensions.Count) extensions."
