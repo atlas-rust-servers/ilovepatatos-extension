@@ -188,7 +188,7 @@ async function main() {
         result.tag += `-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
     }
     console.log(result.reason);
-    const output = { needed: String(result.needed), commit, version: result.version || '', tag: result.tag || '', inputs: JSON.stringify(result.inputs || {}), profile: JSON.stringify(result.profile) };
+    const output = { needed: String(result.needed), commit, version: result.version || '', tag: result.tag || '', inputs: JSON.stringify(result.inputs || {}), profile: JSON.stringify(result.profile || null) };
     for (const [key, value] of Object.entries(output)) {
         assert(!value.includes('\n'), 'Invalid multiline output');
         await fs.appendFile(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
