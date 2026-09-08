@@ -1,0 +1,56 @@
+name: Build Atlas extension
+description: Build and publish an extension with a pinned parent release and reference snapshot.
+inputs:
+  project:
+    description: Relative path to the extension project.
+    required: true
+  assembly:
+    description: Extension assembly name without the dll suffix.
+    required: true
+  platform:
+    description: MSBuild platform.
+    default: Any CPU
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Build and verify dependency chain
+      shell: pwsh
+      env:
+        BUILDER_PATH: ${{ github.action_path }}
+        PROJECT: ${{ inputs.project }}
+        ASSEMBLY: ${{ inputs.assembly }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        $version = '0.0.0'
+        if ($env:GITHUB_REF_TYPE -eq 'tag')
+        {
+            if ($env:GITHUB_REF_NAME -notmatch '^atlas-hub-([0-9]+\.[0-9]+\.[0-9]+)$')
+            {
+                throw "Invalid atlas-hub tag: $env:GITHUB_REF_NAME"
+            }
+            $version = $Matches[1]
+        }
+        & "$env:BUILDER_PATH/Build-Extension.ps1" -Project $env:PROJECT -Assembly $env:ASSEMBLY -Platform $env:PLATFORM -Version $version
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: atlas-hub-build
+        path: bin/*
+        if-no-files-found: error
+
+    - name: Publish versioned prerelease
+      if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_type == 'tag'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $assets = @(Get-ChildItem bin -File | Select-Object -ExpandProperty FullName)
+        gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --prerelease --latest=false --title $env:GITHUB_REF_NAME --notes "Atlas extension build from commit $env:GITHUB_SHA. The manifest records the dependency chain and exact reference hashes."
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw 'Prerelease publication failed.'
+        }

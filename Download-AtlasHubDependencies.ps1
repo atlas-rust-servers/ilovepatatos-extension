@@ -1,5 +1,6 @@
 param(
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot 'src/dependencies')
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot 'src/dependencies'),
+    [string]$ProfilePath = (Join-Path $PSScriptRoot 'atlas-hub.dependencies.json')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,7 +33,8 @@ function Get-ReleaseAsset
         throw "Invalid release asset: $File"
     }
     $url = "https://github.com/$Repository/releases/download/$([Uri]::EscapeDataString($Tag))/$([Uri]::EscapeDataString($File))"
-    Invoke-WebRequest -Uri $url -OutFile $Destination -MaximumRetryCount 2 -RetryIntervalSec 3
+    Write-Output "Downloading $Repository@$Tag/$File"
+    Invoke-WebRequest -Uri $url -OutFile $Destination -MaximumRetryCount 2 -RetryIntervalSec 3 -ConnectionTimeoutSeconds 15 -OperationTimeoutSeconds 120
     Assert-FileHash -Path $Destination -Expected $Sha256
 }
 
@@ -41,16 +43,31 @@ if ((Test-Path -LiteralPath $OutputDirectory) -and @(Get-ChildItem -LiteralPath 
     throw "Dependencies directory must be empty: $OutputDirectory"
 }
 
-$profile = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'atlas-hub.dependencies.json') -Raw | ConvertFrom-Json
+$profile = Get-Content -LiteralPath $ProfilePath -Raw | ConvertFrom-Json
 $downloads = Join-Path $OutputDirectory '.downloads'
 New-Item -ItemType Directory -Path $downloads -Force | Out-Null
-$framework = $profile.uiFramework
+$framework = if ($profile.PSObject.Properties.Name -contains 'parent')
+{
+    $profile.parent
+}
+else
+{
+    $profile.uiFramework
+}
+$branch = if ($framework.PSObject.Properties.Name -contains 'branch')
+{
+    $framework.branch
+}
+else
+{
+    'atlas-hub'
+}
 $manifestPath = Join-Path $downloads 'atlas-hub.build.json'
 Get-ReleaseAsset -Repository $framework.repository -Tag $framework.tag -File 'atlas-hub.build.json' -Sha256 $framework.manifestSha256 -Destination $manifestPath
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-if ($manifest.schema -ne 1 -or $manifest.repository -ne $framework.repository -or $manifest.branch -ne 'atlas-hub' -or $manifest.tag -ne $framework.tag -or $manifest.commit -ne $framework.commit)
+if ($manifest.schema -ne 1 -or $manifest.repository -ne $framework.repository -or $manifest.branch -ne $branch -or $manifest.tag -ne $framework.tag -or $manifest.commit -ne $framework.commit)
 {
-    throw 'UiFramework build metadata does not match the dependency profile.'
+    throw 'Parent build metadata does not match the dependency profile.'
 }
 
 $archivePath = Join-Path $downloads 'references.zip'
@@ -84,7 +101,17 @@ foreach ($reference in $manifest.references.assemblies)
     Assert-FileHash -Path (Join-Path $OutputDirectory $reference.file) -Expected $reference.sha256
 }
 
-Get-ReleaseAsset -Repository $framework.repository -Tag $framework.tag -File $manifest.asset.file -Sha256 $manifest.asset.sha256 -Destination (Join-Path $OutputDirectory 'Oxide.Ext.UiFramework.dll')
+$parentFile = $manifest.asset.file -replace '^atlas-hub_', ''
+if ($parentFile -notmatch '^Oxide\.Ext\.[a-zA-Z0-9_.-]+\.dll$')
+{
+    throw "Invalid parent assembly name: $parentFile"
+}
+$parentPath = Join-Path $OutputDirectory $parentFile
+if (Test-Path -LiteralPath $parentPath)
+{
+    throw "Duplicate parent dependency: $parentFile"
+}
+Get-ReleaseAsset -Repository $framework.repository -Tag $framework.tag -File $manifest.asset.file -Sha256 $manifest.asset.sha256 -Destination $parentPath
 foreach ($extension in $profile.extensions)
 {
     if ($extension.file -notmatch '^Oxide\.Ext\.[a-zA-Z0-9_.-]+\.dll$')
@@ -98,4 +125,4 @@ foreach ($extension in $profile.extensions)
     }
     Get-ReleaseAsset -Repository $extension.repository -Tag $extension.tag -File $extension.file -Sha256 $extension.sha256 -Destination $destination
 }
-Write-Output "Verified $($manifest.references.assemblies.Count) shared references, UiFramework $($framework.tag) and $($profile.extensions.Count) extensions."
+Write-Output "Verified $($manifest.references.assemblies.Count) shared references, $($framework.repository)@$($framework.tag) and $($profile.extensions.Count) extensions."
