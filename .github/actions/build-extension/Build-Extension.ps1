@@ -25,6 +25,10 @@ if (-not $projectPath.StartsWith($sourceDirectory + [IO.Path]::DirectorySeparato
 & (Join-Path $PSScriptRoot '../../../Download-AtlasHubDependencies.ps1') -OutputDirectory (Join-Path $sourceDirectory 'src/dependencies') -ProfilePath (Join-Path $sourceDirectory 'atlas-hub.dependencies.json')
 $profile = Get-Content atlas-hub.dependencies.json -Raw | ConvertFrom-Json
 $parent = Get-Content src/dependencies/.downloads/atlas-hub.build.json -Raw | ConvertFrom-Json
+if ($parent.references.platform -ne 'linux' -or -not (Test-Path 'src/dependencies/Facepunch.Steamworks.Posix.dll'))
+{
+    throw 'The atlas-hub dependency snapshot must target Linux.'
+}
 $parentFile = $parent.asset.file -replace '^atlas-hub_', ''
 $dependencies = @()
 if ($parent.PSObject.Properties.Name -contains 'dependencies')
@@ -145,6 +149,7 @@ $manifest = [ordered]@{
     }
     dependencies = $dependencies
     references = [ordered]@{
+        platform = $parent.references.platform
         file = 'atlas-hub.references.zip'
         sha256 = (Get-FileHash bin/atlas-hub.references.zip -Algorithm SHA256).Hash.ToLowerInvariant()
         assemblies = $references

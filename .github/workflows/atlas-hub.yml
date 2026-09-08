@@ -49,6 +49,10 @@ jobs:
         run: |
           $profile = Get-Content atlas-hub.dependencies.json -Raw | ConvertFrom-Json
           $framework = Get-Content src/dependencies/.downloads/atlas-hub.build.json -Raw | ConvertFrom-Json
+          if ($framework.references.platform -ne 'linux' -or -not (Test-Path 'src/dependencies/Facepunch.Steamworks.Posix.dll'))
+          {
+              throw 'The atlas-hub dependency snapshot must target Linux.'
+          }
           $path = 'src/IlovepatatosExt/bin/Any CPU/Release/net48/Oxide.Ext.IlovepatatosExt.dll'
           $identity = [Reflection.AssemblyName]::GetAssemblyName((Resolve-Path $path))
           if ($identity.Name -ne 'Oxide.Ext.IlovepatatosExt' -or $identity.Version.ToString() -ne "$env:VERSION.0")
@@ -135,6 +139,7 @@ jobs:
               }
               dependencies = $dependencies
               references = [ordered]@{
+                  platform = $framework.references.platform
                   file = 'atlas-hub.references.zip'
                   sha256 = (Get-FileHash 'bin/atlas-hub.references.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
                   assemblies = $references

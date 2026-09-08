@@ -1,9 +1,9 @@
 {
   "uiFramework": {
     "repository": "atlas-rust-servers/ui-framework",
-    "tag": "atlas-hub-1.7.22",
-    "commit": "a6b69581ce8c53646d8364bf6639438a01b7484a",
-    "manifestSha256": "4f8bed4a6c9f2250bdb40f3879e1eaea0c6b2e45a1d6dc6b70b9e311cd9fc63f"
+    "tag": "atlas-hub-1.7.23",
+    "commit": "023de3272408bf609a1b5400fef7ace94d38ac71",
+    "manifestSha256": "5755611ee0b672862206350bd4eaa68e78d8388691f475bbe1f3cbc0da020d07"
   },
   "extensions": [
     {
