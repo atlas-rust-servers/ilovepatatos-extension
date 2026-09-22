@@ -32,15 +32,14 @@ class BranchResolver {
     #log;
     #tokens = new Map();
     #releaseLists = new Map();
-    #manifests = new Map();
 
     constructor(fetchRequest = fetch, log = console.error) {
         this.#fetchRequest = fetchRequest;
         this.#log = log;
     }
 
-    async request(repository, suffix, binary = false) {
-        const headers = { Accept: binary ? 'application/octet-stream' : 'application/vnd.github+json', 'User-Agent': 'Atlas-Egg' };
+    async request(repository, suffix) {
+        const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Atlas-Egg' };
         const token = this.#tokens.get(repository);
         if (token) {
             headers.Authorization = `Bearer ${token}`;
@@ -73,49 +72,33 @@ class BranchResolver {
         throw new Error(`Too many releases in ${repository}; cannot safely select the latest branch build`);
     }
 
-    async manifest(repository, asset) {
-        const key = `${repository}/${asset.id}`;
-        if (this.#manifests.has(key)) {
-            return this.#manifests.get(key);
-        }
-        requireValue(Number.isSafeInteger(asset.id) && asset.id > 0 && asset.size <= 4 * 1024 * 1024, `Invalid build manifest asset in ${repository}`);
-        const response = await this.request(repository, `releases/assets/${asset.id}`, true);
-        const buffer = Buffer.from(await response.arrayBuffer());
-        requireValue(buffer.length <= 4 * 1024 * 1024, 'Build manifest is too large');
-        const manifest = JSON.parse(buffer.toString('utf8'));
-        this.#manifests.set(key, manifest);
-        return manifest;
-    }
-
     async select(entry) {
         const repository = repositoryName(entry.repo);
-        requireValue(typeof entry.branch === 'string' && entry.branch.trim().length > 0 && !/[\x00-\x1f]/.test(entry.branch), `Missing or invalid branch for ${repository}`);
+        requireValue(typeof entry.branch === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(entry.branch), `Missing or invalid branch for ${repository}`);
         requireValue(!entry.tag && !entry.url, `Use branch without tag or url for ${repository}`);
+        const destination = path.posix.basename(outputPath(entry['output-path']));
+        const names = entry.file === undefined ? [destination, `${entry.branch}_${destination}`] : [assetName(entry.file)];
         this.#log(`Resolving ${repository} branch ${entry.branch}...`);
-        const releases = await this.releases(repository);
-        for (const release of releases) {
-            for (const candidate of release.assets) {
-                if (candidate.name !== 'build-manifest.json' && !candidate.name.endsWith('.build.json')) {
-                    continue;
-                }
-                const manifest = await this.manifest(repository, candidate);
-                if (manifest.branch !== entry.branch) {
-                    continue;
-                }
-                requireValue(manifest.repository === repository && /^[a-f0-9]{40}$/i.test(manifest.commit), `Invalid branch manifest in ${repository}@${release.tag_name}`);
-                requireValue(!manifest.tag || manifest.tag === release.tag_name, `Manifest tag mismatch in ${repository}`);
-                const assembly = manifest.asset || manifest.assembly;
-                requireValue(assembly && typeof assembly === 'object', `Missing assembly in ${repository} build manifest`);
-                assetName(assembly.file);
-
-                requireValue(!entry.file || entry.file === assembly.file, `Configured asset differs from ${repository} build manifest`);
-                const matches = release.assets.filter(function matchesAssembly(asset) { return asset.name === assembly.file; });
-                requireValue(matches.length === 1, `Latest ${entry.branch} build lacks ${assembly.file}`);
-                this.#log(`Selected ${repository}@${release.tag_name} (${manifest.commit.slice(0, 8)})`);
-                return { manifest, tag: release.tag_name };
-            }
+        let release;
+        if (entry.branch === 'main') {
+            const response = await this.request(repository, 'releases/latest');
+            release = await response.json();
+            requireValue(release && !release.draft && release.prerelease === false && release.published_at && Array.isArray(release.assets), `Invalid latest stable release for ${repository}`);
+        } else {
+            const prefix = `${entry.branch}-`;
+            const releases = await this.releases(repository);
+            release = releases.find(function matchesBranch(candidate) {
+                return candidate.prerelease === true && typeof candidate.tag_name === 'string' &&
+                    candidate.tag_name.startsWith(prefix) && /^v?\d+(?:\.\d+)*(?:[-+][A-Za-z0-9.-]+)?$/.test(candidate.tag_name.slice(prefix.length));
+            });
         }
-        throw new Error(`No published build manifest for ${repository} branch ${entry.branch}`);
+        requireValue(release, `No published prerelease for ${repository} branch ${entry.branch}`);
+        requireValue(typeof release.tag_name === 'string' && release.tag_name.length > 0, `Invalid release tag for ${repository}`);
+        const matches = release.assets.filter(function matchesAssembly(asset) { return names.includes(asset.name); });
+        requireValue(matches.length > 0, `Latest ${entry.branch} release ${release.tag_name} lacks ${names.join(' or ')}`);
+        requireValue(matches.length === 1, `Ambiguous DLL assets in ${repository}@${release.tag_name}; specify file`);
+        this.#log(`Selected ${repository}@${release.tag_name}`);
+        return { file: assetName(matches[0].name), tag: release.tag_name };
     }
 
     async resolve(config) {
@@ -136,12 +119,11 @@ class BranchResolver {
                     this.#tokens.set(repository, entry.token);
                 }
                 const selected = await this.select(entry);
-                const assembly = selected.manifest.asset || selected.manifest.assembly;
                 const download = { 'output-path': outputPath(entry['output-path']) };
                 if (section === 'private-repo') {
-                    Object.assign(download, { repo: repository, token: entry.token, 'resolved-tag': selected.tag, file: assembly.file });
+                    Object.assign(download, { repo: repository, token: entry.token, 'resolved-tag': selected.tag, file: selected.file });
                 } else {
-                    download.url = `https://github.com/${repository}/releases/download/${encodeURIComponent(selected.tag)}/${encodeURIComponent(assembly.file)}`;
+                    download.url = `https://github.com/${repository}/releases/download/${encodeURIComponent(selected.tag)}/${encodeURIComponent(selected.file)}`;
                 }
                 resolved[section].push(download);
             }
