@@ -1,0 +1,18 @@
+<Project>
+    <PropertyGroup Condition="'$(SharedReleaseBuild)' == 'true'">
+        <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
+        <Optimize>true</Optimize>
+        <DefineConstants Condition="'$(RustFramework)' == 'oxide'">$(DefineConstants);OXIDE</DefineConstants>
+        <DefineConstants Condition="'$(RustFramework)' == 'carbon'">$(DefineConstants);CARBON</DefineConstants>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(SharedReleaseBuild)' == 'true'">
+        <Reference Update="@(Reference)">
+            <HintPath>$(DependencyDirectory)\%(Reference.Identity).dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
+    <Target Name="ValidateSharedReleaseDependencies" BeforeTargets="ResolveAssemblyReferences" Condition="'$(SharedReleaseBuild)' == 'true'">
+        <Error Condition="'$(Platform)' != 'Windows' and '$(Platform)' != 'Linux'" Text="Shared release builds require Platform=Windows or Linux." />
+        <Error Condition="!Exists('$(DependencyDirectory)')" Text="Dependencies not found at '$(DependencyDirectory)'. Run download-dependencies.ps1 for the selected channel and framework." />
+    </Target>
+</Project>

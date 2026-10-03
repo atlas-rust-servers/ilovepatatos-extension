@@ -1,0 +1,29 @@
+{
+  "outputDirectory": "./src/dependencies",
+  "publicReleases": [
+    {
+      "name": "Oxide.Ext.UiFramework",
+      "url": "https://github.com/dassjosh/Rust.UIFramework/releases/latest/download/Oxide.Ext.UiFramework.dll",
+      "frameworks": [
+        "Oxide"
+      ]
+    },
+    {
+      "name": "Oxide.Ext.ConsoleExt",
+      "url": "https://github.com/atlas-rust-servers/console-extension/releases/latest/download/Oxide.Ext.ConsoleExt.dll",
+      "frameworks": [
+        "Oxide"
+      ]
+    },
+    {
+      "name": "Oxide.Ext.GizmosExt",
+      "url": "https://github.com/atlas-rust-servers/gizmos-extension/releases/latest/download/Oxide.Ext.GizmosExt.dll",
+      "frameworks": [
+        "Oxide"
+      ]
+    }
+  ],
+  "privateReleases": [],
+  "githubNuget": [],
+  "deleteDlls": []
+}

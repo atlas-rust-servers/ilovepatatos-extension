@@ -663,3 +663,4 @@ fabric.properties
 
 .idea/
 src/dependencies/*.dll
+/src/dependencies/

@@ -1,0 +1,12 @@
+<Project>
+    <PropertyGroup>
+        <SharedReleaseBuild Condition="'$(Configuration)' == '3. Oxide' or '$(Configuration)' == '4. Oxide Staging' or '$(Configuration)' == '5. Carbon' or '$(Configuration)' == '6. Carbon Staging'">true</SharedReleaseBuild>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(SharedReleaseBuild)' == 'true'">
+        <RustChannel>main</RustChannel>
+        <RustChannel Condition="'$(Configuration)' == '4. Oxide Staging' or '$(Configuration)' == '6. Carbon Staging'">staging</RustChannel>
+        <RustFramework>oxide</RustFramework>
+        <RustFramework Condition="'$(Configuration)' == '5. Carbon' or '$(Configuration)' == '6. Carbon Staging'">carbon</RustFramework>
+        <DependencyDirectory>$(MSBuildThisFileDirectory)dependencies\$(RustChannel)\$(Platform.ToLowerInvariant())\$(RustFramework)</DependencyDirectory>
+    </PropertyGroup>
+</Project>
