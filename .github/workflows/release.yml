@@ -3,6 +3,8 @@ name: Create Release
 on:
   push:
     branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +16,7 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name != 'pull_request'
     uses: ilovepatatos-rust/github-workflows/.github/workflows/release.yml@main
     with:
       project: src/IlovepatatosExt/IlovepatatosExt.csproj
@@ -22,3 +25,23 @@ jobs:
       publicize: false
       keep_versions: -1
     secrets: inherit
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - id: targets
+        uses: ilovepatatos-rust/github-workflows/.github/actions/parse-targets@main
+        with:
+          targets: oxide
+          channel: production
+      - uses: ilovepatatos-rust/github-workflows/.github/actions/download-dependencies@main
+        with:
+          script: ${{ steps.targets.outputs.script }}
+          publicize: false
+      - uses: ilovepatatos-rust/github-workflows/.github/actions/build-extension@main
+        with:
+          project: src/IlovepatatosExt/IlovepatatosExt.csproj
+          configurations: ${{ steps.targets.outputs.configurations }}

@@ -1,6 +1,5 @@
 <Project>
     <PropertyGroup Condition="'$(SharedReleaseBuild)' == 'true'">
-        <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
         <Optimize>true</Optimize>
         <DefineConstants Condition="'$(RustFramework)' == 'oxide'">$(DefineConstants);OXIDE</DefineConstants>
         <DefineConstants Condition="'$(RustFramework)' == 'carbon'">$(DefineConstants);CARBON</DefineConstants>

@@ -3,6 +3,7 @@
         <SharedReleaseBuild Condition="'$(Configuration)' == '3. Oxide' or '$(Configuration)' == '4. Oxide Staging' or '$(Configuration)' == '5. Carbon' or '$(Configuration)' == '6. Carbon Staging'">true</SharedReleaseBuild>
     </PropertyGroup>
     <PropertyGroup Condition="'$(SharedReleaseBuild)' == 'true'">
+        <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
         <RustChannel>main</RustChannel>
         <RustChannel Condition="'$(Configuration)' == '4. Oxide Staging' or '$(Configuration)' == '6. Carbon Staging'">staging</RustChannel>
         <RustFramework>oxide</RustFramework>
